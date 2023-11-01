@@ -1,5 +1,9 @@
+using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading;
 using UnityEngine;
 
 public class TelloController : MonoBehaviour
@@ -8,6 +12,10 @@ public class TelloController : MonoBehaviour
     private string droneIP = "192.168.10.1";
     private int commandPort = 8889;
     private UdpClient udpClient;
+
+    TcpListener server;
+    Thread serverThread;
+    List<TcpClient> clients = new List<TcpClient>();
 
     // Holds user Input, updates in GetInput()
     float turnAxis = 0;
@@ -30,13 +38,70 @@ public class TelloController : MonoBehaviour
 
         // Initiate SDK mode to send flight commands
         SendCommand("command");
+        
     }
+
+    public void startServer()
+    {
+        // Start server on a separate thread to not block main
+        serverThread = new Thread(InitializeServer);
+        serverThread.Start();
+    }
+
+    void InitializeServer()
+    {
+        Int32 port = 5001;
+        IPAddress localAddr = IPAddress.Any;
+
+        TcpListener server = new TcpListener(localAddr, port);
+
+        server.Start();
+
+        Debug.Log("Server running...");
+
+        while (true)
+        {
+            TcpClient client = server.AcceptTcpClient();
+            clients.Add(client);
+
+            IPEndPoint clientEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
+            Debug.Log($"New client connected: {clientEndPoint.Address}:{clientEndPoint.Port}");
+
+            Thread clientThread = new Thread(() => ServeClient(client));
+            clientThread.Start();
+        }
+    }
+
+    void ServeClient(TcpClient client)
+    {
+        NetworkStream stream = client.GetStream();
+        byte[] buffer = new byte[1024];
+
+        int bytesRead = stream.Read(buffer, 0, buffer.Length);
+        string clientData = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+
+        Debug.Log($"Received: {clientData}");
+    }
+
+
 
     void Update()
     {
         // Check user input then apply to drone
-        GetInput();
-        UpdateDrone();
+        //GetInput();
+        //UpdateDrone();
+
+        // Debugging
+        if(Input.GetKeyDown(KeyCode.A))
+        {
+            SendCommand("takeoff");
+            Debug.Log("Command sent: Takeoff");
+        }
+        if (Input.GetKeyDown(KeyCode.S))
+        {
+            SendCommand("land");
+            Debug.Log("Command sent: Land");
+        }
     }
 
     void GetInput()
@@ -61,6 +126,8 @@ public class TelloController : MonoBehaviour
             heightAxis = Input.GetAxis("Vertical");
             forwardAxis = Input.GetAxis("Forward");
             sideAxis = Input.GetAxis("Side");
+
+            Debug.Log("Joystick Pressed");
         }
         else
         {
@@ -136,5 +203,25 @@ public class TelloController : MonoBehaviour
     void OnDisable()
     {
         udpClient.Close();
+
+        // Close all clients
+        foreach (TcpClient client in clients)
+        {
+            client.Close();
+        }
+
+        // Stop the server
+        if (server != null)
+        {
+            server.Stop();
+        }
+
+        // Abort the server thread
+        if (serverThread != null)
+        {
+            serverThread.Abort();
+        }
+
+        Debug.Log("Server and clients closed!");
     }
 }
