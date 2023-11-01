@@ -50,8 +50,9 @@ public class TelloController : MonoBehaviour
 
     void InitializeServer()
     {
-        Int32 port = 5001;
-        IPAddress localAddr = IPAddress.Any;
+        Int32 port = 7777;
+        // Local IP for machine
+        IPAddress localAddr = IPAddress.Parse("131.151.8.167");
 
         TcpListener server = new TcpListener(localAddr, port);
 
